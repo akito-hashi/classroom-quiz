@@ -154,7 +154,7 @@
     if (me.status === "pending") return message("先生の許可を待っています。", "同じクラス・出席番号の人がすでに参加しています。先生に知らせてください。");
     if (me.renameRequired) return renameForm(me);
     const head = h("div", { class: "stu-head" }, h("span", { class: "stu-name" }, label(me)), h("span", { class: "muted" }, `コード ${my.code}`));
-    if (s.status === "lobby") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "big-emoji", "aria-hidden": "true" }, "✋"), h("p", null, h("strong", null, label(me)), " で参加しました"), h("p", { class: "muted" }, "先生が始めるまでお待ちください")));
+    if (s.status === "lobby") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "big-emoji", "aria-hidden": "true" }, "✋"), h("p", null, h("strong", null, label(me)), " で参加しました"), h("p", { class: "muted" }, "先生が始めるまで待ってね")));
     if (s.status === "question") return questionView(head, s);
     if (s.status === "closed") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "stu-msg-main" }, "締め切りました"), ...recorded(s), h("p", { class: "muted" }, "正解発表を待っています")));
     if (s.status === "revealed") return revealView(head, s);

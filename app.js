@@ -16,7 +16,7 @@
     };
     mount(
       h("section", { class: "home" },
-        h("h1", { class: "home-title" }, "教室クイズ"),
+        h("h1", { class: "home-title" }, "クイズ"),
         h("form", { class: "card join-card", onsubmit: (e) => { e.preventDefault(); go(); } },
           h("h2", null, "クイズに参加する"),
           h("p", { class: "muted" }, "先生の画面に出ている参加コードを入れるか、QRコードを読み取ってください。"),
