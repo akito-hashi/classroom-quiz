@@ -70,12 +70,13 @@ service cloud.firestore {
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'renameRequired'])
             && validNick(request.resource.data.nickname)
             && request.resource.data.renameRequired == false
+            && resource.data.renameRequired == true
             && resource.data.status in ['active', 'pending']);
       }
 
       match /seats/{seat} {
-        allow get: if true;
-        allow list, update, delete: if ownerOfSession();
+        // 生徒には読ませない（座席の ID は推測できるので、読めると他人の pid が分かってしまう）
+        allow get, list, update, delete: if ownerOfSession();
         allow create: if request.resource.data.keys().hasOnly(['pid'])
           && getAfter(/databases/$(database)/documents/sessions/$(code)/participants/$(request.resource.data.pid)).data.seat == seat
           && getAfter(/databases/$(database)/documents/sessions/$(code)/participants/$(request.resource.data.pid)).data.status == 'active';

@@ -51,6 +51,7 @@ export async function openPage(hash = "", { device, viewport, beforeLoad } = {})
 export const text = (p, sel) => p.$eval(sel, (e) => e.textContent.trim());
 export const count = (p, sel) => p.$$eval(sel, (es) => es.length);
 export async function waitText(p, sel, pattern, timeout = 15000) {
+  await p.bringToFront(); // 裏のタブはタイマーが間引かれ、Firestore の通知が遅れるため
   await p.waitForFunction((s, src) => [...document.querySelectorAll(s)].some((e) => new RegExp(src).test(e.textContent)), { timeout }, sel, pattern.source ?? pattern);
 }
 // ダウンロード先のフォルダに、名前が pattern に合うファイルができるまで待って中身を返す

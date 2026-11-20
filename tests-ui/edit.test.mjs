@@ -97,3 +97,21 @@ test("スマホ（375×553）で問題作成画面が横にはみ出さない", 
   await makeQuiz(p);
   assert.equal(await noHScroll(p), true);
 });
+
+test("正解の丸を先に選んでから入力した選択肢と解説も、再読み込み後に残っている", async () => {
+  const p = await openPage("#host");
+  await p.click("[data-act=new-quiz]");
+  await p.waitForSelector("#quiz-title");
+  await setVal(p, "#quiz-title", "順番テスト");
+  await p.click("[data-act=add-four]");
+  await setVal(p, ".q-card:nth-of-type(1) .q-text", "問題文");
+  await p.click('.q-card:nth-of-type(1) .q-answer[value="2"]');
+  for (const [i, c] of ["あ", "い", "う", "え"].entries()) await setVal(p, `.q-card:nth-of-type(1) .q-choice[data-i="${i}"]`, c);
+  await setVal(p, ".q-card:nth-of-type(1) .q-expl", "解説です");
+  await p.reload({ waitUntil: "load" });
+  await p.waitForSelector(".q-card");
+  assert.deepEqual(await p.$$eval(".q-choice", (es) => es.map((e) => e.value)), ["あ", "い", "う", "え"]);
+  assert.equal(await p.$eval(".q-expl", (e) => e.value), "解説です");
+  assert.equal(await p.$eval('.q-answer[value="2"]', (e) => e.checked), true);
+  assert.equal(await p.$eval("[data-act=start]", (e) => e.disabled), false);
+});

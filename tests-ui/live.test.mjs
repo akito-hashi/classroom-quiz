@@ -21,7 +21,12 @@ const QUIZ = (settings = {}) => ({
 const PC = { width: 1280, height: 800 };
 const PHONE = { width: 375, height: 553, isMobile: true, hasTouch: true, deviceScaleFactor: 2 };
 const tap = (p, c) => p.$eval(`.choice-btn[data-c="${c}"]`, (e) => e.click());
-const click = (p, sel) => p.$eval(sel, (e) => e.click());
+// 段階が変わった直後のボタンは少しのあいだ押せないので、押せるようになるのを待ってから押す
+async function click(p, sel) {
+  await p.bringToFront(); // 先生の画面は授業中ずっと表に出ている前提（裏だとタイマーが間引かれる）
+  await p.waitForFunction((s) => { const e = document.querySelector(s); return e && !e.disabled; }, { timeout: 15000 }, sel);
+  await p.$eval(sel, (e) => e.click());
+}
 
 // 先生のページを開き、クイズを入れて「授業で使う」を押す。参加コードを返す
 async function teacher(quiz, viewport = PC) {
@@ -154,6 +159,7 @@ test("成績用：同じ出席番号の再参加を先生が許可し、退出�
   await t.waitForSelector("[data-act=approve]");
   await click(t, "[data-act=approve]");
   await waitText(b, ".stu-wait", /1組 7番 たろう/);
+  await a.bringToFront(); // 裏のタブはタイマーが間引かれて通知が遅れるため
   await waitText(a, ".stu-msg", /別の端末/);
 
   const c = await join(code, "へんななまえ", { cls: "1組", num: 8 });
@@ -187,6 +193,58 @@ test("先生の画面をスマホで使っても横にはみ出さない", async
   await click(t, "[data-act=reveal]");
   await waitText(t, ".rate", /100%/);
   assert.equal(await noHScroll(t), true, "正解発表");
+  await click(t, "[data-act=finish]");
+  await t.waitForSelector("[data-act=delete]");
+  await click(t, "[data-act=delete]");
+  await t.waitForSelector(".quiz-item", { timeout: 20000 });
+});
+
+test("「締め切る」をダブルクリックしても、正解発表まで進んでしまわない", async () => {
+  const { t, code } = await teacher(QUIZ());
+  await join(code, "だぶる");
+  await waitText(t, ".people-count", /1人/);
+  await click(t, "[data-act=next]");
+  await t.waitForFunction(() => { const e = document.querySelector("[data-act=close]"); return e && !e.disabled; });
+  // 同じ場所を 0.3 秒あけて2回押す（人のダブルクリックに近い）
+  const box = await (await t.$("[data-act=close]")).boundingBox();
+  await t.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await new Promise((r) => setTimeout(r, 300));
+  await t.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await t.waitForSelector("[data-act=reveal]");
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(await count(t, ".rate"), 0, "正解発表に進んでいない");
+  assert.ok(await t.$("[data-act=reveal]"), "締め切りの画面のまま");
+  await click(t, "[data-act=finish]");
+  await t.waitForSelector("[data-act=delete]");
+  await click(t, "[data-act=delete]");
+  await t.waitForSelector(".quiz-item", { timeout: 20000 });
+});
+
+test("授業中にタブを閉じても、クイズ一覧から授業に戻れる", async () => {
+  const { t, code } = await teacher(QUIZ());
+  await t.goto(t.url().replace(/#.*$/, "") + "#host", { waitUntil: "load" });
+  await waitText(t, ".resume-banner", new RegExp(code));
+  await click(t, "[data-act=resume]");
+  await waitText(t, ".live-code", new RegExp(code.slice(0, 3)));
+  await click(t, "[data-act=finish]");
+  await t.waitForSelector("[data-act=delete]");
+  await click(t, "[data-act=delete]");
+  await t.waitForSelector(".quiz-item", { timeout: 20000 });
+  assert.equal(await count(t, ".resume-banner"), 0);
+});
+
+test("端末に保存できない先生のブラウザでも、授業を始めて進められる", async () => {
+  const t = await openPage("#host", { viewport: PC, beforeLoad: () => { Object.defineProperty(window, "localStorage", { get() { throw new DOMException("blocked", "SecurityError"); } }); } });
+  await t.click("[data-act=new-quiz]");
+  await t.waitForSelector("#quiz-title");
+  await setVal(t, "#quiz-title", "ほぞんなし");
+  await t.click("[data-act=add-tf]");
+  await setVal(t, ".q-card .q-text", "〇か×か");
+  await click(t, "[data-act=start]");
+  await t.waitForSelector(".live-code", { timeout: 20000 });
+  const code = (await text(t, ".live-code")).replace(/\D/g, "");
+  await join(code, "ほぞん");
+  await waitText(t, ".people-count", /1人/);
   await click(t, "[data-act=finish]");
   await t.waitForSelector("[data-act=delete]");
   await click(t, "[data-act=delete]");

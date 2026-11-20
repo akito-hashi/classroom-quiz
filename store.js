@@ -41,6 +41,7 @@ export function createStore(fb, config, { appName, auth: useAuth = false } = {})
         tx.set(sess(code), {
           owner: uid, status: "lobby", settings: { mode: settings.mode, timeLimit: settings.timeLimit, ranking: !!settings.ranking },
           qIndex: -1, qCount, current: null, startedAt: null, timeLimit: 0, reveal: null, final: null, createdAt: F.serverTimestamp(),
+          expireAt: F.Timestamp.fromMillis(Date.now() + 48 * 3600e3), // TTL ポリシーで自動削除
         });
         return true;
       }).catch((e) => { if (e.code === "permission-denied") return false; throw e; }); // 他の先生が使用中のコード
@@ -96,6 +97,14 @@ export function createStore(fb, config, { appName, auth: useAuth = false } = {})
 
   // ---------- 生徒 ----------
   s.getMe = async (code, pid) => { const d = await F.getDoc(sub(code, "participants", pid)); return d.exists() ? d.data() : null; };
+  s.getConfirmedAnswer = async (code, q, pid) => {
+    await Promise.race([F.waitForPendingWrites(db), new Promise((r) => setTimeout(r, 10000))]);
+    const d = await F.getDocFromServer(sub(code, "answers", `${q}_${pid}`)).catch(async (e) => {
+      if (e.code === "not-found") return null;
+      throw e;
+    });
+    return d && d.exists() ? d.data() : null;
+  };
   s.getMyAnswer = async (code, q, pid) => { const d = await F.getDoc(sub(code, "answers", `${q}_${pid}`)); return d.exists() ? d.data() : null; };
   s.rename = (code, pid, nickname) => F.updateDoc(sub(code, "participants", pid), { nickname, renameRequired: false });
   s.watchSession = (code, cb, onError) => F.onSnapshot(sess(code), (d) => cb(d.exists() ? d.data() : null), onError);

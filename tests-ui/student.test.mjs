@@ -170,3 +170,82 @@ test("スマホ・タブレット・PCで、選択肢がはみ出さず画面内
     await h.closeQuestion(code);
   }
 });
+
+test("通信が切れて届かなかった答えは、締め切り後も正解発表でも「届かなかった」と分かる", async () => {
+  const code = await newSession();
+  const p = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(p, "とどかず");
+  await waitText(p, ".stu-wait", /とどかず/);
+  await h.showQuestion(code, 0, four, 0);
+  await p.waitForSelector('.choice-btn[data-c="1"]');
+  await p.setOfflineMode(true);
+  await tap(p, 1);
+  await waitText(p, ".send-status", /届きませんでした/, 20000);
+  await h.closeQuestion(code);
+  await p.setOfflineMode(false);
+  await waitText(p, ".stu-wait", /届きませんでした/, 20000);
+  await h.reveal(code, { answer: 1, counts: [0, 0, 0, 0], answered: 0, correct: 0, rate: null, unanswered: 1, explanation: "", top: null });
+  await waitText(p, ".stu-result", /未回答/);
+  assert.doesNotMatch(await text(p, ".stu-result"), /正解！/);
+});
+
+test("画面のロックなどで問題が遅れて届いても、残り時間は実際の締め切りに合わせて表示される", async () => {
+  const code = await newSession({ mode: "nick", timeLimit: 30, ranking: false });
+  const p = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(p, "おくれ");
+  await waitText(p, ".stu-wait", /おくれ/);
+  await p.setOfflineMode(true);
+  await h.showQuestion(code, 0, four, 30);
+  await new Promise((r) => setTimeout(r, 8000));
+  await p.setOfflineMode(false);
+  await p.waitForSelector(".countdown", { timeout: 30000 });
+  const sec = Number((await text(p, ".countdown")).replace(/\D/g, ""));
+  assert.ok(sec <= 24, `残り ${sec} 秒と表示（実際は約22秒以下）`);
+});
+
+test("カウントダウン中も、選択肢のボタンは作り直されず、スクロール位置も保たれる", async () => {
+  const code = await newSession({ mode: "nick", timeLimit: 30, ranking: false });
+  const p = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(p, "すくろーる");
+  await waitText(p, ".stu-wait", /すくろーる/);
+  await h.showQuestion(code, 0, { ...four, text: "長い問題文です。".repeat(40) }, 30);
+  await p.waitForSelector('.choice-btn[data-c="3"]');
+  await p.evaluate(() => { window.__btn = document.querySelector('.choice-btn[data-c="3"]'); window.scrollTo(0, 200); });
+  const y0 = await p.evaluate(() => window.scrollY);
+  await new Promise((r) => setTimeout(r, 2500));
+  assert.equal(await p.evaluate(() => window.__btn === document.querySelector('.choice-btn[data-c="3"]')), true, "ボタンが作り直された");
+  assert.equal(await p.evaluate(() => window.scrollY), y0, "スクロールが先頭に戻った");
+});
+
+test("別の端末で参加し直したあと、元の端末を開き直すと参加画面に戻れる", async () => {
+  const code = await newSession({ mode: "roster", timeLimit: 0, ranking: false });
+  const a = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(a, "たろう", { cls: "2組", num: 3 });
+  await waitText(a, ".stu-wait", /2組 3番/);
+  const b = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(b, "たろう", { cls: "2組", num: 3 });
+  await waitText(b, ".stu-msg", /許可を待って/);
+  const pending = (await participants(code)).find((x) => x.status === "pending");
+  await h.approveRejoin(code, pending.pid);
+  await a.bringToFront(); // 裏のタブはタイマーが間引かれて通知が遅れるため
+  await waitText(a, ".stu-msg", /別の端末/);
+  await a.reload({ waitUntil: "load" });
+  await a.waitForSelector("#nickname");
+});
+
+test("先生がクラウドのデータを消しても、表示済みの最終結果は消えない", async () => {
+  const code = await h.createSession(nick, 1);
+  const p = await openPage("#join=" + code, { viewport: PHONE });
+  await joinAs(p, "さいご");
+  await waitText(p, ".stu-wait", /さいご/);
+  await h.showQuestion(code, 0, four, 0);
+  await p.waitForSelector('.choice-btn[data-c="1"]');
+  await tap(p, 1);
+  await waitText(p, ".send-status", /送信済み/);
+  await h.closeQuestion(code);
+  await h.finish(code, { asked: 1, answers: [1], top: null });
+  await waitText(p, ".stu-final", /1問中 1問 正解/);
+  await h.deleteSession(code);
+  await new Promise((r) => setTimeout(r, 2000));
+  assert.match(await text(p, ".stu-final"), /1問中 1問 正解/);
+});

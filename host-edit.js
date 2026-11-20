@@ -7,6 +7,8 @@
   function renderLibrary() {
     const fileIn = h("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: (e) => importFile(e.target.files[0]) });
     const quizzes = Library.list();
+    const live = window.HostLive && HostLive.current();
+    if (window.HostLive) HostLive.cleanupInBackground();
     mount(
       h("header", { class: "bar" },
         h("a", { class: "brand", href: "#" }, "教室クイズ"),
@@ -22,6 +24,9 @@
             } }, "＋ 新しいクイズ"),
             h("button", { class: "btn", dataset: { act: "import" }, onclick: () => fileIn.click() }, "ファイルから読み込む"),
             fileIn)),
+        live ? h("div", { class: "resume-banner", role: "status" },
+          h("p", null, "授業中のクイズがあります：", h("strong", null, live.quiz.title || "題名なし"), `（コード ${live.code}）`),
+          h("button", { class: "btn primary", dataset: { act: "resume" }, onclick: () => { location.hash = "#live"; } }, "授業に戻る")) : null,
         quizzes.length
           ? h("ul", { class: "quiz-list" }, quizzes.map(quizItem))
           : h("p", { class: "empty" }, "まだクイズがありません。「新しいクイズ」から作りましょう。")));
@@ -127,7 +132,7 @@
 
   function card(quiz, i, save, rerender) {
     const q = quiz.questions[i];
-    const set = (patch) => { Object.assign(q, patch); quiz.questions[i] = QuizData.normalizeQuestion(q); save(); };
+    const set = (patch) => { Object.assign(q, patch); Object.assign(q, QuizData.normalizeQuestion(q)); save(); };
     const move = (d) => {
       const j = i + d;
       if (j < 0 || j >= quiz.questions.length) return;

@@ -17,7 +17,13 @@
   }
 
   function screen(...kids) {
-    return mount(h("section", { class: "stu" }, ...kids));
+    const s = ctx?.session;
+    const key = s ? `${s.status}:${s.qIndex}` : "";
+    const y = window.scrollY;
+    const root = mount(h("section", { class: "stu" }, ...kids));
+    if (ctx && key && ctx.shownKey === key) window.scrollTo(0, y);
+    if (ctx) ctx.shownKey = key;
+    return root;
   }
   function message(text, sub) {
     screen(h("div", { class: "stu-msg card" }, h("p", { class: "stu-msg-main" }, text), sub ? h("p", { class: "muted" }, sub) : null,
@@ -39,7 +45,10 @@
     } catch {
       return message("通信できませんでした。", "電波やWi-Fiを確かめて、ページを読み込み直してください。学校の端末では、通信が制限されていることがあります。");
     }
-    const my = { code, store, unsubs: [], session: undefined, me: undefined, pid: null, choices: {}, send: {}, seq: 0, offset: Number(sget("quiz-offset")) || 0, lastStart: null, first: true, timer: null };
+    const stored = sget("quiz-offset");
+    // choices: この端末で選んだ答え、lastOk: 届いたと返事があった答え、verified: サーバーに記録されている答え（締め切り後に確かめる）
+    const my = { code, store, unsubs: [], session: undefined, me: undefined, pid: null, choices: {}, send: {}, lastOk: {}, verified: {}, seq: 0,
+      offset: stored == null || stored === "" ? null : Number(stored), lastStart: null, first: true, timer: null, reentered: false, justJoined: false, shownKey: null };
     ctx = my;
 
     const saved = sget("quiz-join-" + code);
@@ -47,7 +56,8 @@
       try {
         const me = await store.getMe(code, saved);
         if (ctx !== my) return;
-        if (me) return enter(saved);
+        // 別の端末で参加し直したあとの元の端末は、参加画面からやり直せるようにする
+        if (me && me.status !== "replaced") { my.reentered = true; return enter(saved); }
       } catch { /* 新しく参加し直す */ }
     }
     let session;
@@ -78,6 +88,7 @@
       try {
         const r = await ctx.store.join(ctx.code, roster ? { nickname, cls: c, num: n } : { nickname });
         sset("quiz-join-" + ctx.code, r.pid);
+        ctx.justJoined = true;
         enter(r.pid);
       } catch (e2) {
         err.textContent = e2.code === "permission-denied" ? "参加できませんでした。入力を確かめてください。" : errorText(e2);
@@ -98,13 +109,18 @@
     const my = ctx;
     my.pid = pid;
     const onErr = (e) => { if (ctx === my) message(errorText(e)); };
-    my.unsubs.push(my.store.watchMe(my.code, pid, (me) => { my.me = me; draw(); }, onErr));
+    my.unsubs.push(my.store.watchMe(my.code, pid, (me) => {
+      // 参加した直後に届く自分の参加時刻（サーバーの時計）で、端末の時計とのずれを測る
+      if (my.justJoined && me && me.joinedAt) { my.justJoined = false; observe(my, me.joinedAt.toMillis() - Date.now()); }
+      my.me = me;
+      draw();
+    }, onErr));
     my.unsubs.push(my.store.watchSession(my.code, (s) => {
       if (s && s.status === "question" && s.startedAt) {
         const t = s.startedAt.toMillis();
         if (t !== my.lastStart) {
-          // 新しい問題が届いた瞬間のずれを、端末の時計とサーバーの時計の差とみなす（読み込み直後は前回の値を使う）
-          if (!my.first) { my.offset = t - Date.now(); sset("quiz-offset", String(my.offset)); }
+          // 新しい問題が届いた瞬間のずれも測る（読み込み直後に届いた古い問題は使わない）
+          if (!my.first) observe(my, t - Date.now());
           my.lastStart = t;
         }
       }
@@ -114,6 +130,13 @@
     }, onErr));
   }
 
+  // ずれの測定値は「サーバーの時刻 − 受け取った時刻」なので、届くのが遅れるほど小さくなる。
+  // 一番大きい（遅れが一番少ない）値を使う。画面ロックなどで遅れて届いた値に引きずられないように。
+  function observe(my, v) {
+    my.offset = my.offset == null ? v : Math.max(my.offset, v);
+    sset("quiz-offset", String(my.offset));
+  }
+
   const label = (me) => (me.cls ? `${me.cls} ${me.num}番 ${me.nickname}` : me.nickname);
 
   function draw() {
@@ -121,7 +144,10 @@
     if (!my || my.session === undefined) return;
     clearInterval(my.timer);
     const { me, session: s } = my;
-    if (s === null) return message("このクイズは終わりました。", "おつかれさまでした。");
+    if (s === null) {
+      if (my.finalDone) return; // 先生がデータを消しても、表示した最終結果は残す
+      return message("このクイズは終わりました。", "おつかれさまでした。");
+    }
     if (!me || !s) return;
     if (me.status === "kicked") return message("先生によって退出になりました。");
     if (me.status === "replaced") return message("別の端末で参加し直したため、この画面は使えなくなりました。");
@@ -130,7 +156,7 @@
     const head = h("div", { class: "stu-head" }, h("span", { class: "stu-name" }, label(me)), h("span", { class: "muted" }, `コード ${my.code}`));
     if (s.status === "lobby") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "big-emoji", "aria-hidden": "true" }, "✋"), h("p", null, h("strong", null, label(me)), " で参加しました"), h("p", { class: "muted" }, "先生が始めるまでお待ちください")));
     if (s.status === "question") return questionView(head, s);
-    if (s.status === "closed") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "stu-msg-main" }, "締め切りました"), yourChoice(s), h("p", { class: "muted" }, "正解発表を待っています")));
+    if (s.status === "closed") return screen(head, h("div", { class: "stu-wait card" }, h("p", { class: "stu-msg-main" }, "締め切りました"), ...recorded(s), h("p", { class: "muted" }, "正解発表を待っています")));
     if (s.status === "revealed") return revealView(head, s);
     if (s.status === "finished") return finalView(head, s);
   }
@@ -139,18 +165,43 @@
     if (c == null) return "";
     return s.current.type === "tf" ? s.current.choices[c] : `${LETTERS[c]} ${s.current.choices[c]}`;
   }
-  function yourChoice(s) {
-    const c = ctx.choices[s.qIndex];
-    return h("p", null, c == null ? "回答していません" : ["あなたの答え：", h("strong", null, choiceText(s, c))]);
+  // 締め切り後に、サーバーに記録された答えを確かめる。届いたと返事があった答えなら読み直さない
+  function ensureVerified(q) {
+    const my = ctx;
+    if (my.verified[q] !== undefined) return;
+    if (my.choices[q] !== undefined && my.send[q] === "sent" && my.lastOk[q] === my.choices[q]) { my.verified[q] = my.choices[q]; return; }
+    if (my.choices[q] === undefined && !my.reentered) { my.verified[q] = null; return; } // この端末では一度も押していない
+    my.verified[q] = "loading";
+    my.store.getConfirmedAnswer(my.code, q, my.pid)
+      .then((a) => { my.verified[q] = a ? a.choice : null; })
+      .catch(() => { my.verified[q] = undefined; setTimeout(() => { if (ctx === my) draw(); }, 3000); })
+      .finally(() => { if (ctx === my) draw(); });
+  }
+  // 記録された答え（確認中は undefined）
+  function recordedChoice(q) {
+    ensureVerified(q);
+    const v = ctx.verified[q];
+    return v === "loading" || v === undefined ? undefined : v;
+  }
+  function recorded(s) {
+    const q = s.qIndex;
+    const v = recordedChoice(q);
+    if (v === undefined) return [h("p", { class: "muted" }, "答えを確認しています…")];
+    const picked = ctx.choices[q];
+    const lost = picked != null && picked !== v;
+    const out = [h("p", null, v == null ? "回答は記録されていません" : ["あなたの答え：", h("strong", null, choiceText(s, v))])];
+    if (lost) out.push(h("p", { class: "lost" }, `最後に選んだ「${choiceText(s, picked)}」は届きませんでした`));
+    return out;
   }
 
+  // 読み込み直したときだけ、出題中の問題の自分の答えを読み直す（新しく参加した人は読まない）
   async function loadMyChoice(s) {
     const my = ctx;
-    if (my.choices[s.qIndex] !== undefined || my.loading === s.qIndex) return;
+    if (!my.reentered || my.choices[s.qIndex] !== undefined || my.loading === s.qIndex) return;
     my.loading = s.qIndex;
     try {
       const a = await my.store.getMyAnswer(my.code, s.qIndex, my.pid);
-      if (a && my.choices[s.qIndex] === undefined) { my.choices[s.qIndex] = a.choice; my.send[s.qIndex] = "sent"; }
+      if (a && my.choices[s.qIndex] === undefined) { my.choices[s.qIndex] = a.choice; my.lastOk[s.qIndex] = a.choice; my.send[s.qIndex] = "sent"; }
       else if (my.choices[s.qIndex] === undefined) my.choices[s.qIndex] = null;
     } catch { /* 読めなくても回答はできる */ }
     if (ctx === my) draw();
@@ -159,7 +210,7 @@
   function remaining(s) {
     if (!s.timeLimit || !s.startedAt) return null;
     const end = s.startedAt.toMillis() + s.timeLimit * 1000;
-    return Math.max(0, Math.min(s.timeLimit, Math.ceil((end - (Date.now() + ctx.offset)) / 1000)));
+    return Math.max(0, Math.min(s.timeLimit, Math.ceil((end - (Date.now() + (ctx.offset ?? 0))) / 1000)));
   }
 
   function questionView(head, s) {
@@ -189,7 +240,13 @@
         h("p", { class: "stu-qtext" }, s.current.text),
         h("div", { class: "choice-grid" + (tf ? " tf" : "") }, buttons),
         status));
-    if (left != null && !over) my.timer = setInterval(() => { if (remaining(s) !== left) draw(); }, 250);
+    // 残り時間は文字だけを書き換える（ボタンを作り直すとタップを取りこぼし、スクロールも戻ってしまう）
+    if (left != null && !over) my.timer = setInterval(() => {
+      const l = remaining(s);
+      if (l === 0) return draw();
+      cd.textContent = `残り ${l}秒`;
+      cd.classList.toggle("low", l <= 5);
+    }, 250);
   }
 
   async function send(s, k) {
@@ -201,7 +258,7 @@
     draw();
     try {
       await my.store.answer(my.code, q, my.pid, k);
-      if (seq === my.seq) my.send[q] = "sent";
+      if (seq === my.seq) { my.send[q] = "sent"; my.lastOk[q] = k; }
     } catch (e) {
       if (seq === my.seq) my.send[q] = e.code === "permission-denied" ? "late" : e.code === "resource-exhausted" ? "quota" : "fail";
     }
@@ -210,8 +267,8 @@
 
   function revealView(head, s) {
     const my = ctx;
-    loadMyChoice(s);
-    const c = my.choices[s.qIndex];
+    const c = recordedChoice(s.qIndex);
+    if (c === undefined) return screen(head, h("div", { class: "stu-result card none" }, h("p", { class: "muted" }, "答えを確認しています…")));
     const ans = s.reveal.answer;
     const ok = c === ans;
     const correctText = s.current.type === "tf" ? s.current.choices[ans] : `${LETTERS[ans]} ${s.current.choices[ans]}`;
@@ -219,6 +276,7 @@
       h("p", { class: "result-big" }, c == null ? "未回答" : ok ? "正解！" : "不正解"),
       c == null || !ok ? h("p", null, "正解は ", h("strong", null, correctText)) : null,
       c != null && !ok ? h("p", { class: "muted" }, "あなたの答え：", choiceText(s, c)) : null,
+      my.choices[s.qIndex] != null && my.choices[s.qIndex] !== c ? h("p", { class: "lost" }, `最後に選んだ「${choiceText(s, my.choices[s.qIndex])}」は届きませんでした`) : null,
       s.reveal.explanation ? h("p", { class: "expl" }, s.reveal.explanation) : null));
   }
 

@@ -5,8 +5,15 @@
   const KEY = "quiz-host";
   let ctx = null;
 
-  const loadState = () => { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch { return null; } };
-  const saveState = (v) => { try { v ? localStorage.setItem(KEY, JSON.stringify(v)) : localStorage.removeItem(KEY); } catch { /* 保存できなくても授業は続けられる */ } };
+  // 授業中の状態。端末に保存できないブラウザではメモリだけで持つ（再読み込みすると戻れない）
+  let memState = null;
+  let storable = true;
+  const loadState = () => { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch { storable = false; return memState; } };
+  const saveState = (v) => {
+    memState = v;
+    try { v ? localStorage.setItem(KEY, JSON.stringify(v)) : localStorage.removeItem(KEY); localStorage.setItem("quiz-host-used", "1"); }
+    catch { storable = false; }
+  };
   const storeP = () => import("./cloud.js").then((m) => m.getStore("host"));
 
   // 「授業で使う」：セッションを作って授業の画面へ
@@ -14,7 +21,7 @@
     const quiz = Library.get(quizId);
     if (!quiz) return;
     const cur = loadState();
-    if (cur && !confirm("前の授業がまだ終わっていません。前の授業を終えずに、新しく始めますか？（前の授業のデータは24時間後に自動で消えます）")) {
+    if (cur && confirm(`授業中のクイズ「${cur.quiz.title || "題名なし"}」（コード ${cur.code}）があります。前の授業に戻りますか？\n\n「キャンセル」を押すと、前の授業を終えずに新しく始めます。`)) {
       location.hash = "#live";
       return;
     }
@@ -22,6 +29,7 @@
       const store = await storeP();
       const code = await store.createSession(quiz.settings, quiz.questions.length);
       saveState({ code, quiz });
+      if (!storable) toast("この端末には保存できないため、ページを読み込み直すと授業に戻れません");
       if (location.hash === "#live") render(); else location.hash = "#live";
     } catch (e) {
       alert(e.code === "resource-exhausted" ? "今日の利用上限に達しました。明日もう一度お試しください。" : "授業を始められませんでした。通信を確かめてください。");
@@ -192,8 +200,15 @@
           s.status === "closed" ? closedView(my, s) :
             s.status === "revealed" ? revealView(my, s) : finalView(my, s);
     const keepScroll = window.scrollY;
+    const stage = `${s.status}:${s.qIndex}`;
+    if (stage !== my.stage) { my.stage = stage; my.stageAt = Date.now(); }
     mount(topBar(my, s), h("section", { class: "live" }, main, peoplePanel(my, s)));
     window.scrollTo(0, keepScroll);
+    const wait = 800 - (Date.now() - my.stageAt);
+    if (wait > 0) {
+      document.querySelectorAll(".stage-btn").forEach((b) => { b.disabled = true; });
+      setTimeout(() => { if (ctx === my) document.querySelectorAll(".stage-btn").forEach((b) => { b.disabled = false; }); }, wait);
+    }
   }
 
   function topBar(my, s) {
@@ -231,7 +246,7 @@
       h("div", { class: "lobby-side" },
         h("p", { class: "lobby-count" }, h("strong", null, String(n)), " 人が参加中"),
         h("ul", { class: "lobby-names" }, activeChains(my).map((c) => h("li", null, c.head.nickname))),
-        h("button", { class: "btn primary big", dataset: { act: "next" }, onclick: nextQuestion }, `1問目を出す（全${my.quiz.questions.length}問）`)));
+        h("button", { class: "btn primary big stage-btn", dataset: { act: "next" }, onclick: nextQuestion }, `1問目を出す（全${my.quiz.questions.length}問）`)));
   }
 
   function qBlock(my, s, { showAnswer = false, counts = null } = {}) {
@@ -275,7 +290,7 @@
         h("p", { class: "answer-count" }, "回答 ", h("strong", null, `${ans.length} / ${actives.length}`)),
         done ? h("p", { class: "all-answered" }, "全員回答しました") : null,
         h("span", { class: "grow" }),
-        h("button", { class: "btn primary big", dataset: { act: "close" }, onclick: closeQ }, "締め切る")));
+        h("button", { class: "btn primary big stage-btn", dataset: { act: "close" }, onclick: closeQ }, "締め切る")));
   }
 
   function closedView(my, s) {
@@ -286,7 +301,7 @@
       h("div", { class: "live-foot" },
         h("p", { class: "answer-count" }, "回答 ", h("strong", null, `${ans.length} / ${activeChains(my).length}`)),
         h("span", { class: "grow" }),
-        h("button", { class: "btn primary big", dataset: { act: "reveal" }, onclick: reveal }, "正解発表")));
+        h("button", { class: "btn primary big stage-btn", dataset: { act: "reveal" }, onclick: reveal }, "正解発表")));
   }
 
   function revealView(my, s) {
@@ -302,7 +317,7 @@
       r.explanation ? h("div", { class: "live-expl card" }, h("strong", null, "解説"), h("p", null, r.explanation)) : null,
       rankBlock(r.top),
       h("div", { class: "live-foot" }, h("span", { class: "grow" }),
-        h("button", { class: "btn primary big", dataset: { act: "next" }, onclick: nextQuestion }, last ? "最終結果へ" : "次の問題へ")));
+        h("button", { class: "btn primary big stage-btn", dataset: { act: "next" }, onclick: nextQuestion }, last ? "最終結果へ" : "次の問題へ")));
   }
 
   function rankBlock(top) {
@@ -349,5 +364,11 @@
   }
 
   window.addEventListener("hashchange", () => { if (!location.hash.startsWith("#live")) stopCtx(); });
-  window.HostLive = { start, render };
+  function cleanupInBackground() {
+    let used = false;
+    try { used = !!localStorage.getItem("quiz-host-used"); } catch { /* 保存できない端末では掃除しない */ }
+    if (used) storeP().then((s) => s.cleanupOld(24)).catch(() => {});
+  }
+
+  window.HostLive = { start, render, current: loadState, cleanupInBackground };
 })();

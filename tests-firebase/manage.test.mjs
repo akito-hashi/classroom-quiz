@@ -95,8 +95,9 @@ test("セッションを削除すると参加者・回答・座席・本体が�
   await s.answer(code, 0, me.pid, 0);
   await h.deleteSession(code);
   assert.equal(await h.getSession(code), null);
-  // セッション本体が消えると一覧は読めなくなるので、ID を指定して1件ずつ確かめる
-  for (const path of [["participants", me.pid], ["answers", `0_${me.pid}`], ["seats", "2組-1"]]) {
+  // セッション本体が消えると一覧は読めなくなるので、ID を指定して1件ずつ確かめる。
+  // 座席は先生しか読めず、本体が消えると先生も確かめられないので、参加者・回答と同じ手順で消えることに頼る
+  for (const path of [["participants", me.pid], ["answers", `0_${me.pid}`]]) {
     const d = await F.getDoc(F.doc(s.db, "sessions", code, ...path));
     assert.equal(d.exists(), false, path.join("/"));
   }
@@ -115,4 +116,29 @@ test("cleanupOld は自分の古いセッションを消す", async () => {
   const code = await h.createSession(nick, 1);
   await h.cleanupOld(0);
   assert.equal(await h.getSession(code), null);
+});
+
+test("生徒は出席番号の予約（座席）を読めない（他人の pid を知る手段がない）", async () => {
+  await withSession(roster, async (h, code) => {
+    const a = await student();
+    await a.join(code, { nickname: "たろう", cls: "1組", num: 12 });
+    const evil = await student();
+    await rejectsWithCode(F.getDoc(F.doc(evil.db, "sessions", code, "seats", "1組-12")), "permission-denied");
+  });
+});
+
+test("名前の変更を求められていない生徒は、自分で名前を変えられない", async () => {
+  await withSession(nick, async (h, code) => {
+    const s = await student();
+    const me = await s.join(code, { nickname: "まじめ" });
+    await rejectsWithCode(s.rename(code, me.pid, "わるくち"), "permission-denied");
+  });
+});
+
+test("セッションには、消し忘れても自動で消すための期限（作成から48時間）が付く", async () => {
+  await withSession(nick, async (h, code) => {
+    const s = await h.getSession(code);
+    const hours = (s.expireAt.toMillis() - s.createdAt.toMillis()) / 3600e3;
+    assert.ok(hours > 47.9 && hours < 48.1, String(hours));
+  });
 });
