@@ -115,3 +115,36 @@ test("正解の丸を先に選んでから入力した選択肢と解説も、�
   assert.equal(await p.$eval('.q-answer[value="2"]', (e) => e.checked), true);
   assert.equal(await p.$eval("[data-act=start]", (e) => e.disabled), false);
 });
+
+test("クイズ一覧の「アプリを共有」で、共有メニューにアプリのURLが渡される", async () => {
+  const p = await openPage("#host", { beforeLoad: () => {
+    window.__shared = null;
+    Object.defineProperty(navigator, "share", { configurable: true, value: async (data) => { window.__shared = data; } });
+  } });
+  await p.waitForSelector("[data-act=share-app]");
+  await p.click("[data-act=share-app]");
+  await p.waitForFunction(() => window.__shared);
+  const data = await p.evaluate(() => window.__shared);
+  assert.equal(data.url, BASE);
+  assert.match(data.title, /クイズ/);
+});
+
+test("共有メニューがないブラウザでは、URLをコピーして知らせる", async () => {
+  const p = await openPage("#host", { beforeLoad: () => {
+    window.__copied = null;
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } });
+  } });
+  await p.waitForSelector("[data-act=share-app]");
+  await p.click("[data-act=share-app]");
+  await p.waitForFunction(() => window.__copied);
+  assert.equal(await p.evaluate(() => window.__copied), BASE);
+  await p.waitForFunction(() => /コピーしました/.test(document.getElementById("toast").textContent));
+});
+
+test("スマホ（375×553）のクイズ一覧で、上のボタンがすべて画面内に見える", async () => {
+  const p = await openPage("#host", { viewport: { width: 375, height: 553, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } });
+  await p.waitForSelector("[data-act=share-app]");
+  const rights = await p.$$eval(".page-head .btn", (bs) => bs.map((b) => b.getBoundingClientRect().right));
+  for (const r of rights) assert.ok(r <= 375, `ボタンの右端 ${r}px が画面の外`);
+});

@@ -16,13 +16,14 @@
       h("section", { class: "page" },
         h("div", { class: "page-head" },
           h("h1", null, "クイズ一覧"),
-          h("div", { class: "row gap" },
+          h("div", { class: "row gap wrap" },
             h("button", { class: "btn primary", dataset: { act: "new-quiz" }, onclick: () => {
               const q = QuizData.newQuiz();
               Library.save(q);
               location.hash = "#host/edit/" + q.id;
             } }, "＋ 新しいクイズ"),
             h("button", { class: "btn", dataset: { act: "import" }, onclick: () => fileIn.click() }, "ファイルから読み込む"),
+            h("button", { class: "btn", dataset: { act: "share-app" }, onclick: shareApp }, "アプリを共有"),
             fileIn)),
         live ? h("div", { class: "resume-banner", role: "status" },
           h("p", null, "授業中のクイズがあります：", h("strong", null, live.quiz.title || "題名なし"), `（コード ${live.code}）`),
@@ -30,6 +31,25 @@
         quizzes.length
           ? h("ul", { class: "quiz-list" }, quizzes.map(quizItem))
           : h("p", { class: "empty" }, "まだクイズがありません。「新しいクイズ」から作りましょう。")));
+  }
+
+  // アプリの URL を共有する（スマホ・タブレットは共有メニュー、ないブラウザはコピー）
+  async function shareApp() {
+    const url = location.origin + location.pathname;
+    if (navigator.share) {
+      try { await navigator.share({ title: document.title, text: "授業で使える参加型のクイズアプリです", url }); }
+      catch (e) { if (e.name !== "AbortError") copyUrl(url); }
+      return;
+    }
+    copyUrl(url);
+  }
+  async function copyUrl(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("アプリのURLをコピーしました");
+    } catch {
+      prompt("このURLをコピーして送ってください", url);
+    }
   }
 
   function quizItem(quiz) {
