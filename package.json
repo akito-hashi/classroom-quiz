@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "firebase": "11.10.0",
-    "puppeteer-core": "24.43.1"
+    "puppeteer-core": "24.43.1",
+    "qrcode-generator": "^1.4.4"
   }
 }
