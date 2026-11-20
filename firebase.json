@@ -1,0 +1,25 @@
+{
+  "hosting": {
+    "target": "quiz",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "tests/**",
+      "tests-firebase/**",
+      "tests-ui/**",
+      "tools/**",
+      "package.json",
+      "package-lock.json",
+      "README.md",
+      "firestore.rules"
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|css|webmanifest)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}

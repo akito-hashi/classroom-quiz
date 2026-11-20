@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "educationquiz-1ad5d"
+  },
+  "targets": {
+    "educationquiz-1ad5d": {
+      "hosting": {
+        "quiz": ["kyoshitsu-quiz"]
+      }
+    }
+  }
+}
