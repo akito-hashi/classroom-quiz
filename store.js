@@ -95,6 +95,8 @@ export function createStore(fb, config, { appName, auth: useAuth = false } = {})
   };
 
   // ---------- 生徒 ----------
+  s.getMe = async (code, pid) => { const d = await F.getDoc(sub(code, "participants", pid)); return d.exists() ? d.data() : null; };
+  s.getMyAnswer = async (code, q, pid) => { const d = await F.getDoc(sub(code, "answers", `${q}_${pid}`)); return d.exists() ? d.data() : null; };
   s.rename = (code, pid, nickname) => F.updateDoc(sub(code, "participants", pid), { nickname, renameRequired: false });
   s.watchSession = (code, cb, onError) => F.onSnapshot(sess(code), (d) => cb(d.exists() ? d.data() : null), onError);
   s.watchMe = (code, pid, cb, onError) => F.onSnapshot(sub(code, "participants", pid), (d) => cb(d.exists() ? d.data() : null), onError);
