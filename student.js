@@ -313,10 +313,12 @@
   }
   function showFinal(box, s, { score, total }) {
     const top = s.final?.top;
-    box.replaceChildren(
+    // replaceChildren に null を渡すと「null」という文字が出るので、空のものは除く
+    box.replaceChildren(...[
       h("p", { class: "stu-msg-main" }, "おつかれさまでした"),
       h("p", { class: "final-score" }, `${total}問中 ${score}問 正解`),
-      top && top.length ? h("ol", { class: "rank-list small" }, top.map((r) => h("li", null, h("span", { class: "rank" }, `${r.rank}位`), r.nickname, h("span", { class: "muted" }, ` ${r.score}問`)))) : null);
+      top && top.length ? h("ol", { class: "rank-list small" }, top.map((r) => h("li", null, h("span", { class: "rank" }, `${r.rank}位`), r.nickname, h("span", { class: "muted" }, ` ${r.score}問`)))) : null,
+    ].filter(Boolean));
   }
 
   function renameForm(me) {

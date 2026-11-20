@@ -120,6 +120,7 @@ test("正解発表で正解・不正解が出て、終了後に自分の正解�
   assert.match(await text(p, ".stu-result"), /〇/);
   await h.finish(code, { answers: [1, 0], top: null });
   await waitText(p, ".stu-final", /2問中 1問 正解/);
+  assert.doesNotMatch(await text(p, ".stu-final"), /null|undefined/i, "最終結果に null などが出ない");
   void me;
 });
 
