@@ -1,0 +1,103 @@
+rules_version = '2';
+// 教室クイズのルール。Firebase コンソール → Firestore Database → ルール に貼って「公開」する。
+// 先生は匿名ログイン、生徒はログインしない。生徒は自分の pid（推測できないランダムな ID）だけで読み書きする。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /sessions/{code} {
+      function isOwner() { return request.auth != null && resource.data.owner == request.auth.uid; }
+      function validSettings(st) {
+        return st.keys().hasOnly(['mode', 'timeLimit', 'ranking'])
+          && st.mode in ['nick', 'roster'] && st.timeLimit is int && st.timeLimit >= 0 && st.timeLimit <= 600 && st.ranking is bool;
+      }
+      // 生徒に配る問題に正解や解説が入っていないこと
+      function validCurrent(c) {
+        return c == null || (c.keys().hasOnly(['type', 'text', 'choices', 'hasImage'])
+          && c.type in ['four', 'tf'] && c.choices is list && c.choices.size() == (c.type == 'tf' ? 2 : 4));
+      }
+
+      allow get: if true;
+      allow list: if request.auth != null && resource.data.owner == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.status == 'lobby'
+        && code.matches('[1-9][0-9]{5}')
+        && validSettings(request.resource.data.settings)
+        && request.resource.data.current == null;
+      allow update: if isOwner()
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.status in ['lobby', 'question', 'closed', 'revealed', 'finished']
+        && validSettings(request.resource.data.settings)
+        && validCurrent(request.resource.data.current);
+      allow delete: if isOwner();
+
+      function session() { return get(/databases/$(database)/documents/sessions/$(code)).data; }
+      function ownerOfSession() { return request.auth != null && session().owner == request.auth.uid; }
+
+      match /participants/{pid} {
+        function validNick(n) { return n is string && n.size() >= 1 && n.size() <= 12; }
+        function expectedFirstQ(s) { return s.status == 'question' ? s.qIndex : s.qIndex + 1; }
+        function seatPath(seat) { return /databases/$(database)/documents/sessions/$(code)/seats/$(seat); }
+
+        allow get: if true;
+        allow list, delete: if ownerOfSession();
+        allow create: if request.resource.data.keys().hasOnly(['pid', 'nickname', 'cls', 'num', 'seat', 'status', 'inheritsFrom', 'renameRequired', 'firstQ', 'joinedAt'])
+          && request.resource.data.pid == pid
+          && pid.matches('[A-Za-z0-9]{20}')
+          && validNick(request.resource.data.nickname)
+          && request.resource.data.inheritsFrom == null
+          && request.resource.data.renameRequired == false
+          && request.resource.data.joinedAt == request.time
+          && session().status != 'finished'
+          && request.resource.data.firstQ == expectedFirstQ(session())
+          && (
+            (session().settings.mode == 'nick'
+              && request.resource.data.status == 'active'
+              && request.resource.data.cls == '' && request.resource.data.num == null && request.resource.data.seat == null)
+            || (session().settings.mode == 'roster'
+              && request.resource.data.cls is string && request.resource.data.cls.matches('[^/]{1,10}')
+              && request.resource.data.num is int && request.resource.data.num >= 1 && request.resource.data.num <= 99
+              && request.resource.data.seat == request.resource.data.cls + '-' + string(request.resource.data.num)
+              && (
+                (request.resource.data.status == 'active'
+                  && !exists(seatPath(request.resource.data.seat))
+                  && getAfter(seatPath(request.resource.data.seat)).data.pid == pid)
+                || (request.resource.data.status == 'pending' && exists(seatPath(request.resource.data.seat)))
+              ))
+          );
+        // 生徒が自分で変えられるのは名前だけ（名前の変更を求められたときなど）
+        allow update: if ownerOfSession()
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'renameRequired'])
+            && validNick(request.resource.data.nickname)
+            && request.resource.data.renameRequired == false
+            && resource.data.status in ['active', 'pending']);
+      }
+
+      match /seats/{seat} {
+        allow get: if true;
+        allow list, update, delete: if ownerOfSession();
+        allow create: if request.resource.data.keys().hasOnly(['pid'])
+          && getAfter(/databases/$(database)/documents/sessions/$(code)/participants/$(request.resource.data.pid)).data.seat == seat
+          && getAfter(/databases/$(database)/documents/sessions/$(code)/participants/$(request.resource.data.pid)).data.status == 'active';
+      }
+
+      match /answers/{aid} {
+        function canAnswer() {
+          let s = session();
+          let d = request.resource.data;
+          let me = get(/databases/$(database)/documents/sessions/$(code)/participants/$(d.pid)).data;
+          return d.keys().hasOnly(['pid', 'q', 'choice', 'at'])
+            && aid == string(d.q) + '_' + d.pid
+            && d.at == request.time
+            && s.status == 'question' && d.q == s.qIndex
+            && (s.timeLimit == 0 || request.time < s.startedAt + duration.value(s.timeLimit + 2, 's'))
+            && d.choice is int && d.choice >= 0 && d.choice < (s.current.type == 'tf' ? 2 : 4)
+            && me.status == 'active';
+        }
+        allow get: if true;
+        allow list, delete: if ownerOfSession();
+        allow create, update: if canAnswer();
+      }
+    }
+  }
+}
