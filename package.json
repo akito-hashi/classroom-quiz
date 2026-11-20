@@ -1,0 +1,13 @@
+{
+  "name": "classroom-quiz",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/",
+    "test:firebase": "node --test --test-concurrency=1 --test-timeout=60000 tests-firebase/",
+    "test:ui": "node --test --test-concurrency=1 --test-timeout=180000 tests-ui/"
+  },
+  "devDependencies": {
+    "firebase": "11.10.0",
+    "puppeteer-core": "24.43.1"
+  }
+}
