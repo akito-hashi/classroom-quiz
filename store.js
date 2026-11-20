@@ -70,7 +70,32 @@ export function createStore(fb, config, { appName, auth: useAuth = false } = {})
     await F.deleteDoc(sess(code));
   };
 
+  // 同じ出席番号での再参加を許可する：座席を新しい pid に付け替え、前の pid の回答を引き継ぐ
+  s.approveRejoin = async (code, newPid) => {
+    const me = (await F.getDoc(sub(code, "participants", newPid))).data();
+    if (!me || me.status !== "pending") throw new Error("許可待ちの参加者ではありません");
+    const seat = await F.getDoc(sub(code, "seats", me.seat));
+    const oldPid = seat.exists() ? seat.data().pid : null;
+    const b = F.writeBatch(db);
+    b.set(sub(code, "seats", me.seat), { pid: newPid });
+    b.update(sub(code, "participants", newPid), { status: "active", inheritsFrom: oldPid });
+    if (oldPid) b.update(sub(code, "participants", oldPid), { status: "replaced" });
+    await b.commit();
+  };
+  s.kick = (code, pid) => F.updateDoc(sub(code, "participants", pid), { status: "kicked" });
+  s.requireRename = (code, pid) => F.updateDoc(sub(code, "participants", pid), { renameRequired: true });
+  // 自分の古いセッション（hours 時間より前に作ったもの）を消す
+  s.cleanupOld = async (hours = 24) => {
+    const snap = await F.getDocs(F.query(F.collection(db, "sessions"), F.where("owner", "==", uid)));
+    const limit = Date.now() - hours * 3600e3;
+    for (const d of snap.docs) {
+      const t = d.data().createdAt?.toMillis?.() ?? 0;
+      if (t <= limit) await s.deleteSession(d.id);
+    }
+  };
+
   // ---------- 生徒 ----------
+  s.rename = (code, pid, nickname) => F.updateDoc(sub(code, "participants", pid), { nickname, renameRequired: false });
   s.watchSession = (code, cb, onError) => F.onSnapshot(sess(code), (d) => cb(d.exists() ? d.data() : null), onError);
   s.watchMe = (code, pid, cb, onError) => F.onSnapshot(sub(code, "participants", pid), (d) => cb(d.exists() ? d.data() : null), onError);
 
