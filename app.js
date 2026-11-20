@@ -43,4 +43,7 @@
 
   window.addEventListener("hashchange", route);
   route();
+
+  // 一度開けば通信なしでも画面が出るように
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
