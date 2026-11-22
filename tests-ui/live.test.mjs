@@ -95,6 +95,19 @@ test("3人が2問に答える授業を通しで行い、集計・正解発表・
 
   await click(t, "[data-act=next]"); // 最後の問題のあとは最終結果へ
   await t.waitForSelector("[data-act=csv]");
+  // 最終結果：問題ごとに、各選択肢を選んだ人数のグラフ
+  const charts = await t.$$eval(".final-chart", (cs) => cs.map((c) => ({
+    counts: [...c.querySelectorAll(".final-bar")].map((b) => Number(b.dataset.count)),
+    correct: [...c.querySelectorAll(".final-row")].findIndex((r) => r.classList.contains("correct")),
+    text: c.textContent,
+  })));
+  assert.equal(charts.length, 2);
+  assert.deepEqual(charts[0].counts, [1, 2, 0, 0]);
+  assert.deepEqual(charts[1].counts, [1, 1]);
+  assert.equal(charts[0].correct, 1, "Q1 の正解は B");
+  assert.equal(charts[1].correct, 0, "Q2 の正解は 〇");
+  assert.match(charts[0].text, /67%/);
+  assert.match(charts[1].text, /未回答 1人/);
   await waitText(s1, ".stu-final", /2問中 2問 正解/);
 
   const dl = fs.mkdtempSync(path.join(os.tmpdir(), "quiz-csv-"));

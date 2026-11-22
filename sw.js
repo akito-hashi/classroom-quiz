@@ -2,7 +2,7 @@
 // アプリのファイル：ネットから最新を取り、つながらないときだけ保存済みを使う。
 // Firebase SDK（版を固定）：一度読み込んだものを保存して使う。
 // ファイルを追加・改名したときは FILES を直し、VERSION の数字を上げる。
-const VERSION = "v6";
+const VERSION = "v7";
 const CACHE = "classroom-quiz-" + VERSION;
 const SDK_CACHE = "classroom-quiz-sdk";
 const SDK = "https://www.gstatic.com/firebasejs/11.10.0/";
