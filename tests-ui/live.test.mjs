@@ -67,8 +67,10 @@ test("3人が2問に答える授業を通しで行い、集計・正解発表・
   await click(t, "[data-act=reveal]");
   await waitText(t, ".rate", /67%/);
   assert.equal(await t.$eval(".live-bar", (e) => getComputedStyle(e).backgroundColor), "rgb(31, 42, 68)", "上の帯は紺色のまま");
-  assert.ok(await t.$eval(".dist-bar", (e) => e.getBoundingClientRect().height) < 30, "グラフの棒は細い");
-  assert.deepEqual(await t.$$eval(".dist-bar", (es) => es.map((e) => Number(e.dataset.count))), [1, 2, 0, 0]);
+  assert.ok(await t.$eval(".chart-bar", (e) => e.getBoundingClientRect().height) < 30, "グラフの棒は細い");
+  // 正解発表：各選択肢を選んだ人数のグラフ
+  assert.deepEqual(await t.$$eval(".choice-chart .chart-bar", (es) => es.map((e) => Number(e.dataset.count))), [1, 2, 0, 0]);
+  assert.equal(await t.$$eval(".choice-chart .chart-row", (rs) => rs.findIndex((r) => r.classList.contains("correct"))), 1, "正解は B");
   assert.match(await text(t, ".live-expl"), /367km/);
   assert.equal(await count(t, ".rank-list"), 0, "ランキングなしでは順位を出さない");
   await waitText(s1, ".stu-result", /正解！/);
@@ -92,22 +94,14 @@ test("3人が2問に答える授業を通しで行い、集計・正解発表・
   await click(t, "[data-act=reveal]");
   await waitText(t, ".rate", /50%/);
   assert.match(await text(t, ".unanswered"), /1人/);
+  assert.deepEqual(await t.$$eval(".choice-chart .chart-bar", (es) => es.map((e) => Number(e.dataset.count))), [1, 1]);
+  assert.equal(await t.$$eval(".choice-chart .chart-row", (rs) => rs.findIndex((r) => r.classList.contains("correct"))), 0, "正解は 〇");
 
   await click(t, "[data-act=next]"); // 最後の問題のあとは最終結果へ
   await t.waitForSelector("[data-act=csv]");
-  // 最終結果：問題ごとに、各選択肢を選んだ人数のグラフ
-  const charts = await t.$$eval(".final-chart", (cs) => cs.map((c) => ({
-    counts: [...c.querySelectorAll(".final-bar")].map((b) => Number(b.dataset.count)),
-    correct: [...c.querySelectorAll(".final-row")].findIndex((r) => r.classList.contains("correct")),
-    text: c.textContent,
-  })));
-  assert.equal(charts.length, 2);
-  assert.deepEqual(charts[0].counts, [1, 2, 0, 0]);
-  assert.deepEqual(charts[1].counts, [1, 1]);
-  assert.equal(charts[0].correct, 1, "Q1 の正解は B");
-  assert.equal(charts[1].correct, 0, "Q2 の正解は 〇");
-  assert.match(charts[0].text, /67%/);
-  assert.match(charts[1].text, /未回答 1人/);
+  // 最終結果はグラフではなく、問題ごとの正解率の一覧
+  assert.equal(await count(t, ".choice-chart"), 0);
+  assert.deepEqual(await t.$$eval(".final-list li strong", (es) => es.map((e) => e.textContent)), ["67%", "50%"]);
   await waitText(s1, ".stu-final", /2問中 2問 正解/);
 
   const dl = fs.mkdtempSync(path.join(os.tmpdir(), "quiz-csv-"));

@@ -255,32 +255,25 @@ select.input { width: auto; }
 .live-rank { margin-top: 1rem; }
 .live-final h2 { font-size: 1.8em; margin: 0; }
 .live-final { display: grid; gap: 1rem; }
-/* 最終結果のグラフ（問題ごとの選択肢の人数） */
-.final-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: .8rem; }
-.final-chart { display: grid; gap: .5rem; padding: .9rem 1rem; align-content: start; }
-.fc-head { display: flex; align-items: baseline; gap: .6rem; min-width: 0; }
-.fc-head .fq { font-weight: 800; flex: none; }
-.fc-head .ft { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fc-rate { flex: none; color: var(--ink-2); font-size: .9em; }
-.fc-rate strong { color: var(--ink); font-size: 1.15em; font-variant-numeric: tabular-nums; }
-.fc-rows { display: grid; gap: 2px; }
-.final-row { display: grid; grid-template-columns: minmax(5.5em, 9em) 1fr 3em 4.2em; align-items: center; gap: .5rem; padding: .2rem 0; font-size: .92em; }
-.fr-label { display: flex; align-items: center; gap: .35rem; min-width: 0; color: var(--ink); }
-.fr-label .mark { flex: none; width: 1.2em; text-align: center; font-weight: 800; }
-.fr-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.final-row.c0 .mark { color: var(--c0); } .final-row.c1 .mark { color: var(--c1); }
-.final-row.c2 .mark { color: var(--c2); } .final-row.c3 .mark { color: var(--c3); }
-.final-row.tf0 .mark { color: var(--tf0); } .final-row.tf1 .mark { color: var(--tf1); }
-.fr-track { height: 14px; background: #efeadf; border-radius: 0 4px 4px 0; overflow: hidden; }
-.final-bar { display: block; height: 100%; min-width: 0; border-radius: 0 4px 4px 0; }
-.final-row.c0 .final-bar { background: var(--c0); } .final-row.c1 .final-bar { background: var(--c1); }
-.final-row.c2 .final-bar { background: var(--c2); } .final-row.c3 .final-bar { background: var(--c3); }
-.final-row.tf0 .final-bar { background: var(--tf0); } .final-row.tf1 .final-bar { background: var(--tf1); }
-.fr-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.fr-ok { font-size: .85em; font-weight: 800; color: var(--ok); white-space: nowrap; }
-.final-row.correct .fr-text { font-weight: 800; }
-.fc-foot { margin: 0; font-size: .85em; }
-@media (max-width: 560px) { .fc-head { flex-wrap: wrap; } .fc-head .ft { white-space: normal; flex-basis: calc(100% - 3em); order: 3; } }
+/* 正解発表のグラフ（各選択肢を選んだ人数） */
+.choice-chart { display: grid; gap: 4px; padding: .9rem 1.1rem; margin-top: .8rem; }
+.chart-row { display: grid; grid-template-columns: minmax(6em, 14em) 1fr 3.4em 4.6em; align-items: center; gap: .7rem; padding: .25rem 0; }
+.cr-label { display: flex; align-items: center; gap: .4rem; min-width: 0; color: var(--ink); font-weight: 700; }
+.cr-label .mark { flex: none; width: 1.3em; text-align: center; font-weight: 800; }
+.chart-row.tf0 .cr-label .mark, .chart-row.tf1 .cr-label .mark { font-size: 1.5em; }
+.cr-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-row.c0 .mark { color: var(--c0); } .chart-row.c1 .mark { color: var(--c1); }
+.chart-row.c2 .mark { color: var(--c2); } .chart-row.c3 .mark { color: var(--c3); }
+.chart-row.tf0 .mark { color: var(--tf0); } .chart-row.tf1 .mark { color: var(--tf1); }
+.cr-track { height: 20px; background: #efeadf; border-radius: 0 4px 4px 0; overflow: hidden; }
+.chart-bar { display: block; height: 100%; border-radius: 0 4px 4px 0; transition: width .5s ease-out; }
+.chart-row.c0 .chart-bar { background: var(--c0); } .chart-row.c1 .chart-bar { background: var(--c1); }
+.chart-row.c2 .chart-bar { background: var(--c2); } .chart-row.c3 .chart-bar { background: var(--c3); }
+.chart-row.tf0 .chart-bar { background: var(--tf0); } .chart-row.tf1 .chart-bar { background: var(--tf1); }
+.cr-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 700; }
+.cr-ok { font-size: .85em; font-weight: 800; color: var(--ok); white-space: nowrap; }
+.chart-row.correct .cr-label { font-weight: 900; }
+@media (max-width: 560px) { .chart-row { grid-template-columns: minmax(4.5em, 8em) 1fr 2.8em 4em; gap: .4rem; font-size: .92em; } }
 .final-list { list-style: none; margin: 0; padding: .5rem 1rem; display: grid; }
 .final-list li { display: flex; gap: .8rem; align-items: baseline; padding: .4rem 0; border-bottom: 1px solid var(--line); }
 .final-list li:last-child { border-bottom: none; }

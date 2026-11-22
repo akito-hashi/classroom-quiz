@@ -263,6 +263,13 @@
       })));
   }
 
+  // 問題文と画像だけ（選択肢なし）
+  function questionText(my, s) {
+    const q = my.quiz.questions[s.qIndex];
+    const img = q.imageId && my.images[q.imageId] ? h("img", { class: "live-img", src: my.images[q.imageId], alt: "" }) : null;
+    return h("div", { class: "live-q" }, h("p", { class: "live-qtext" }, q.text), img);
+  }
+
   function qHead(my, s, extra) {
     return h("div", { class: "live-qhead" }, h("strong", null, `Q${s.qIndex + 1}`, h("span", { class: "muted" }, ` / ${my.quiz.questions.length}`)), h("span", { class: "tag" }, my.quiz.questions[s.qIndex].type === "tf" ? "〇×" : "4択"), h("span", { class: "grow" }), extra);
   }
@@ -306,7 +313,8 @@
     const last = s.qIndex + 1 >= my.quiz.questions.length;
     return h("div", null,
       qHead(my, s, null),
-      qBlock(my, s, { showAnswer: true, counts: r.counts }),
+      questionText(my, s),
+      choiceChart(my.quiz.questions[s.qIndex], r.counts, r.answered + r.unanswered),
       h("div", { class: "live-stats" },
         h("div", { class: "stat" }, h("span", null, "正解率"), h("strong", { class: "rate" }, r.rate == null ? "—" : `${Math.round(r.rate * 100)}%`)),
         h("div", { class: "stat" }, h("span", null, "正解"), h("strong", null, `${r.correct} / ${r.answered}人`)),
@@ -323,36 +331,32 @@
       h("ol", { class: "rank-list" }, top.map((t) => h("li", null, h("span", { class: "rank" }, `${t.rank}位`), t.nickname, h("span", { class: "muted" }, `　${t.score}問`)))));
   }
 
-  // 最終結果：問題ごとに、各選択肢を選んだ人数の横棒グラフ。
-  // 棒の長さは参加者全員に対する割合（問題どうしで比べられるように）。色は選択肢の色、記号と文字も添える
-  function finalChart(my, q, i) {
-    const total = activeChains(my).length;
-    const t = Tally.tally(q.type, q.answer, answersFor(my, i), total);
+  // 各選択肢を選んだ人数の横棒グラフ（正解発表で使う）。
+  // 棒の長さは参加者全員に対する割合。色は選択肢の色、記号と文字も添えて色だけに頼らない
+  function choiceChart(q, counts, total) {
     const tf = q.type === "tf";
     const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
-    return h("section", { class: "final-chart card" },
-      h("div", { class: "fc-head" },
-        h("strong", { class: "fq" }, `Q${i + 1}`),
-        h("span", { class: "ft" }, q.text),
-        h("span", { class: "fc-rate" }, "正解率 ", h("strong", null, t.rate == null ? "—" : `${Math.round(t.rate * 100)}%`))),
-      h("div", { class: "fc-rows" }, q.choices.map((c, k) => {
-        const ok = k === q.answer;
-        const label = tf ? c : `${LETTERS[k]} ${c}`;
-        return h("div", { class: `final-row ${tf ? "tf" + k : "c" + k}${ok ? " correct" : ""}`, title: `${label}：${t.counts[k]}人（${pct(t.counts[k])}%）` },
-          h("span", { class: "fr-label" }, h("span", { class: "mark", "aria-hidden": "true" }, tf ? c : MARKS[k]), tf ? null : h("span", { class: "fr-text" }, label)),
-          h("span", { class: "fr-track" }, h("span", { class: "final-bar", dataset: { count: String(t.counts[k]) }, style: `width:${pct(t.counts[k])}%` })),
-          h("span", { class: "fr-n" }, `${t.counts[k]}人`),
-          ok ? h("span", { class: "fr-ok" }, "✓ 正解") : h("span", { class: "fr-ok" }));
-      })),
-      t.unanswered ? h("p", { class: "fc-foot muted" }, `未回答 ${t.unanswered}人`) : null);
+    return h("div", { class: "choice-chart card" }, q.choices.map((c, k) => {
+      const ok = k === q.answer;
+      const label = tf ? c : `${LETTERS[k]} ${c}`;
+      return h("div", { class: `chart-row ${tf ? "tf" + k : "c" + k}${ok ? " correct" : ""}`, title: `${label}：${counts[k]}人（${pct(counts[k])}%）` },
+        h("span", { class: "cr-label" }, h("span", { class: "mark", "aria-hidden": "true" }, tf ? c : MARKS[k]), tf ? null : h("span", { class: "cr-text" }, label)),
+        h("span", { class: "cr-track" }, h("span", { class: "chart-bar", dataset: { count: String(counts[k]) }, style: `width:${pct(counts[k])}%` })),
+        h("span", { class: "cr-n" }, `${counts[k]}人`),
+        ok ? h("span", { class: "cr-ok" }, "✓ 正解") : h("span", { class: "cr-ok" }));
+    }));
   }
 
   function finalView(my, s) {
     const n = s.final?.asked ?? asked(my);
+    const rows = my.quiz.questions.slice(0, n).map((q, i) => {
+      const t = Tally.tally(q.type, q.answer, answersFor(my, i), activeChains(my).length);
+      return h("li", null, h("span", { class: "fq" }, `Q${i + 1}`), h("span", { class: "ft" }, q.text), h("strong", null, t.rate == null ? "—" : `${Math.round(t.rate * 100)}%`));
+    });
     return h("div", { class: "live-final" },
       h("h2", null, "おつかれさまでした"),
       h("p", { class: "muted" }, `${activeChains(my).length}人が参加・${n}問を出題`),
-      h("div", { class: "final-charts" }, my.quiz.questions.slice(0, n).map((q, i) => finalChart(my, q, i))),
+      h("ol", { class: "final-list card" }, rows),
       rankBlock(s.final?.top),
       h("div", { class: "card final-actions" },
         h("p", null, "結果をCSVで保存してから、クラウドのデータを削除してください。"),
